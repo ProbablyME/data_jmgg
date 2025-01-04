@@ -2,17 +2,125 @@ import streamlit as st
 import os
 import json
 from PIL import Image
-import requests
 ##----------------------------------
 
 import pandas as pd
 import time as tm
 import os
-import requests
 import plotly
+
+import time
+import requests
+from datetime import datetime, timedelta
 
 API_KEY = 'RGAPI-f5672a44-e896-46f0-a8e9-3f6afe819b79'
 
+axo='wBk00t9-kh2cqBqW1Vk2N7XuYXOGW9g40uLNf8_bNGvEbm6erOlZ0CzEsiSkKYFKZ4mTIA9SN3BvUg'
+maxou='8-3RjS7qonoe4jnZ0r7aimehAVc1B2eusvnTD5_RFe43sL7ci6u9WMQwlgC4RMxpuoLVT5iCapY1Kw'
+druust='VWA4wNDoutiB2QlJjYJBb75LX097ZQUT-jYxcu5MSDe5_G9EJ0My7wrotHsy3RW8ywUFzX9ekFptmQ'
+dan='qtzVLEw5NZxPu8v8lAmRXBQHBUgahfu3jwNghfYT2njtsNi_RReRXc8IxWyhDuoCp98qd80Ppo4ONg'
+poly='yLiS_46rBuUzrB1bnNjcCFMSuZX1_pngso519a5BapGBT2OnnYyuuNBIDnXeQwsUlW0HpOE7tU4azw'
+
+
+
+
+
+def request(url):
+    while True:
+        request = requests.get(url)
+        # Works
+        if request.status_code == 200:
+            break
+        # No data found
+        elif request.status_code == 404:
+            return(404)
+        # Too much requests
+        elif request.status_code == 429:
+            print("Too much requests.")
+            time.sleep(120)
+    return request # Retourne la requete
+
+def get_rank_by_summonerName(gameName=None, tagLine=None, api_key=None):
+    # Obtenir le PUUID depuis Riot ID
+    account_info = get_puuid(gameName=gameName, tagLine=tagLine, api_key=api_key)
+    puuid = account_info['puuid']
+    
+    # Obtenir l'ID du Summoner à partir du PUUID
+    link = f'https://euw1.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/{puuid}?api_key={api_key}'
+    response = request(link)
+    summoner_id = response.json()['id']
+
+    # Pause pour respecter les limites de taux
+    time.sleep(1.2)
+
+    # Obtenir les informations de rang via l'ID du Summoner
+    link = f'https://euw1.api.riotgames.com/lol/league/v4/entries/by-summoner/{summoner_id}?api_key={api_key}'
+    response = request(link)    
+    # Chercher le rang Solo/Duo
+    for queue in response.json():
+        if queue['queueType'] == 'RANKED_SOLO_5x5':
+            return {
+                'tier': queue['tier'],
+                'rank': queue['rank'],
+                'leaguePoints': queue['leaguePoints'],
+                'wins': queue['wins'],
+                'losses': queue['losses']
+            }
+    return None
+
+def generer_leaderboard():
+    players = [
+        ('Dr Dre', 'Axo'),
+        ('50 Cent', 'Maxou'),
+        ('Eminem', 'Drust'),
+        ('UNGOLiANT', '001'),
+        ('Snoop Dogg', 'PLYCK')
+    ]
+
+    data = {}
+
+    for game_name, tag_line in players:
+        try:
+            # Obtenir les informations de rang
+            rank_data = get_rank_by_summonerName(gameName=game_name, tagLine=tag_line, api_key=API_KEY)
+            
+            # Obtenir l'historique des matchs pour les 7 derniers jours
+            account_info = get_puuid(gameName=game_name, tagLine=tag_line, api_key=API_KEY)
+            puuid = account_info['puuid']
+            end_time = int(datetime.utcnow().timestamp())
+            start_time = int((datetime.utcnow() - timedelta(days=7)).timestamp())
+            match_history_url = f'https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?startTime={start_time}&endTime={end_time}&start=0&count=100&api_key={API_KEY}'
+            response = request(match_history_url)
+            matches = response.json()
+
+            # Analyser les victoires et défaites
+            wins, losses = 0, 0
+            for match_id in matches:
+                match_url = f'https://europe.api.riotgames.com/lol/match/v5/matches/{match_id}?api_key={API_KEY}'
+                response = request(match_url)
+                match_details = response.json()
+                
+                for participant in match_details['info']['participants']:
+                    if participant['puuid'] == puuid:
+                        if participant['win']:
+                            wins += 1
+                        else:
+                            losses += 1
+                        break
+            
+            # Ajouter les données au dictionnaire
+            rank_data['recent_wins'] = wins
+            rank_data['recent_losses'] = losses
+            data[f"{game_name}#{tag_line}"] = rank_data
+
+        except Exception as e:
+            print(f"Erreur pour le joueur {game_name}#{tag_line}: {str(e)}")
+            data[f"{game_name}#{tag_line}"] = None
+
+    # Créer le DataFrame
+    df = pd.DataFrame(data).transpose()
+
+    return df
 
 def get_puuid(gameName=None, tagLine=None, api_key=None):
     
@@ -50,15 +158,15 @@ def get_ladder(top=3000):
     masters = 'lol/league/v4/masterleagues/by-queue/RANKED_SOLO_5x5'
 
 
-    chall_response = requests.get(root + chall + '?api_key=' + api_key )
+    chall_response = requests.get(root + chall + '?api_key=' + API_KEY )
     chall_df = pd.DataFrame(chall_response.json()['entries']).sort_values('leaguePoints', ascending=False).reset_index(drop=True)
     gm_df= pd.DataFrame()
     masters_df = pd.DataFrame()
     if (top > 300): 
-        gm_response = requests.get(root + gm + '?api_key=' + api_key )
+        gm_response = requests.get(root + gm + '?api_key=' + API_KEY )
         gm_df = pd.DataFrame(gm_response.json()['entries']).sort_values('leaguePoints', ascending=False).reset_index(drop=True)
     if (top > 1000):
-        masters_response = requests.get(root + masters + '?api_key=' + api_key )
+        masters_response = requests.get(root + masters + '?api_key=' + API_KEY )
         masters_df = pd.DataFrame(masters_response.json()['entries']).sort_values('leaguePoints', ascending=False).reset_index(drop=True)
     
     ladder = pd.concat([chall_df, gm_df, masters_df])[:top].reset_index(drop=True)
@@ -72,7 +180,7 @@ def get_match_history(puuid=None, start=0, count=20):
     root = 'https://europe.api.riotgames.com/'
     endpoint = f'lol/match/v5/matches/by-puuid/{puuid}/ids?type=tourney&start={start}&count={count}'
 
-    response = requests.get(root + endpoint + '&api_key=' + api_key)
+    response = requests.get(root + endpoint + '&api_key=' + API_KEY)
     
     return response.json()
 
@@ -81,7 +189,7 @@ def get_match_data_from_id(matchId=None):
     root = 'https://europe.api.riotgames.com/'
     endpoint = f'lol/match/v5/matches/{matchId}'
 
-    response = requests.get(root + endpoint + '?api_key=' + api_key)
+    response = requests.get(root + endpoint + '?api_key=' + API_KEY)
     
     return response.json()
 
@@ -89,7 +197,7 @@ def get_match_data_from_id_at15(matchId=None):
     root = 'https://europe.api.riotgames.com/'
     endpoint = f'lol/match/v5/matches/{matchId}/timeline'
 
-    response = requests.get(root + endpoint + '?api_key=' + api_key)
+    response = requests.get(root + endpoint + '?api_key=' + API_KEY)
     
     return response.json()
 
@@ -295,33 +403,26 @@ def json_extract(obj, key):
     values = extract(obj, arr, key)
     return values
 
-def get_rank_by_summonerName(gameName=None, tagLine=None, api_key=None):
-    # First get PUUID from Riot ID
-    account_info = get_puuid(gameName=gameName, tagLine=tagLine, api_key=api_key)
-    puuid = account_info['puuid']
-        
-    # Get Summoner ID using PUUID
-    link = f'https://euw1.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/{puuid}?api_key={api_key}'
-    response = requests.get(link)
-    summoner_id = response.json()['id']
-        
-    # Get rank information using Summoner ID
-    link = f'https://euw1.api.riotgames.com/lol/league/v4/entries/by-summoner/{summoner_id}?api_key={api_key}'
-    response = requests.get(link)
-        
-    # Find Solo/Duo queue rank
-    for queue in response.json():
-        if queue['queueType'] == 'RANKED_SOLO_5x5':
-            return {
-                    'tier': queue['tier'],
-                    'rank': queue['rank'],
-                    'leaguePoints': queue['leaguePoints'],
-                    'wins': queue['wins'],
-                    'losses': queue['losses']
-                }
-        
-    return None  # Return None if no Solo/Duo rank found
 
+
+# def get_last_week_time():
+#     end_time = datetime.datetime.now()
+#     start_time = end_time - datetime.timedelta(days=7)
+#     return start_time.timestamp(), end_time.timestamp()
+
+# def get_match_history_last_week(puuid=None, startTime=get_last_week_time()[0], endTime=datetime.datetime.now().timestamp(), start=0, count=20):
+    
+#     startTime = int(startTime)
+#     endTime = int(endTime)
+    
+#     root = 'https://europe.api.riotgames.com/'
+#     endpoint = f'lol/match/v5/matches/by-puuid/{puuid}/ids?startTime={startTime}&endTime={endTime}&queue=420&start=0&count=100'
+    
+
+
+#     response = requests.get(root + endpoint + '&api_key=' + API_KEY)
+    
+#     return response.json()
 
 def create_leaderboard(rank_data_list):
     """
@@ -378,48 +479,6 @@ def create_leaderboard(rank_data_list):
 
 ##-------------------------------------------------
 
-def generer_leaderboard():
-    players = [
-    ('Dr Dre', 'Axo'),
-    ('50 Cent', 'Maxou'), 
-    ('Eminem', 'Drust'),
-    ('UNGOLiANT', '001'),
-    ('Snoop Dogg', 'PLYCK')
-    ]
-
-    axo, maxou, druust, dan, poly = None, None, None, None, None
-
-    for i, (game_name, tag_line) in enumerate(players):
-        try:
-
-                
-            if i == 0:
-                axo = get_rank_by_summonerName(gameName=game_name, tagLine=tag_line, api_key=API_KEY)
-            elif i == 1:
-                maxou = get_rank_by_summonerName(gameName=game_name, tagLine=tag_line, api_key=API_KEY)
-            elif i == 2:
-                druust = get_rank_by_summonerName(gameName=game_name, tagLine=tag_line, api_key=API_KEY)
-            elif i == 3:
-                dan = get_rank_by_summonerName(gameName=game_name, tagLine=tag_line, api_key=API_KEY)
-            elif i == 4:
-                poly = get_rank_by_summonerName(gameName=game_name, tagLine=tag_line, api_key=API_KEY)
-                
-        except Exception as e:
-            print(f"Error getting data for {game_name}#{tag_line}: {str(e)}")
-
-    # Create a dictionary with all player data
-    data = {
-        'Axo': axo,
-        'Maxou': maxou, 
-        'Druust': druust,
-        'Dan': dan,
-        'Poly': poly
-    }
-
-    # Create DataFrame and transpose it
-    df = pd.DataFrame(data).transpose()
-
-    return df
 
 
 
@@ -465,7 +524,9 @@ def handle_soloq():
 
 # Fonction pour afficher le profil SoloQ
 def display_soloq_profile():
-    st.dataframe(generer_leaderboard())
+    df1 = generer_leaderboard()
+    
+    st.dataframe(df1)
     
     
     
