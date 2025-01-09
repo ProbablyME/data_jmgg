@@ -588,7 +588,7 @@ def handle_stats():
     st.subheader("Pick History Scrims")
 
     # Chemin vers le dossier contenant les fichiers JSON
-    scrim_path = '../suivi_scrim/json_matchs'  # Remplacez par le chemin de votre dossier JSON
+    scrim_path = 'json_matchs'  # Remplacez par le chemin de votre dossier JSON
 
     # Vérifiez si le dossier existe
     if not os.path.exists(scrim_path):
