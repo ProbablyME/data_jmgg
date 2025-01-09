@@ -484,8 +484,8 @@ def create_leaderboard(rank_data_list):
 
 
 # Répertoire contenant les icônes des champions
-champ_icons = 'suivi_scrim/champ_icons'
-item_icons = 'suivi_scrim/item_icons'
+champ_icons = 'champ_icons'
+item_icons = 'item_icons'
 
 # Fonction principale
 def main():
