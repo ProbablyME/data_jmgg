@@ -1,4 +1,5 @@
 import streamlit as st
+st.set_page_config(layout="wide")
 import os
 import json
 from PIL import Image
@@ -579,29 +580,103 @@ def display_item_icon(item_id, inline=False):
 
 
 
-# Fonction pour gérer la catégorie Stats
+
+
+
+#suivi_scrim/json_matchs
 def handle_stats():
-    st.subheader("Statistiques des Champions")
-    scrim_path = 'json_matchs'
+    st.subheader("Pick History Scrims")
 
+    # Chemin vers le dossier contenant les fichiers JSON
+    scrim_path = 'suivi_scrim/json_matchs'  # Remplacez par le chemin de votre dossier JSON
+
+    # Vérifiez si le dossier existe
     if not os.path.exists(scrim_path):
-        st.warning("Aucun fichier JSON de scrim trouvé. Veuillez ajouter des fichiers JSON dans le dossier 'json_matchs'.")
+        st.warning("Aucun dossier trouvé pour les fichiers JSON.")
         return
 
+    # Récupérez tous les fichiers JSON du dossier
     scrim_files = [f for f in os.listdir(scrim_path) if f.endswith('.json')]
-    if not scrim_files:
-        st.warning("Aucun fichier JSON de scrim disponible.")
-        return
 
-    # Récupération des données des champions
-    champion_stats = collect_champion_stats(scrim_path, scrim_files)
+    # Liste des joueurs spécifiés avec leurs rôles
+    specified_players = [
+        ("Axo Bad Boy", "Jungle"),
+        ("MaxouTigrou", "Top"),
+        ("JMGG Druust", "Bottom"),
+        ("hqShadow02", "Middle"),
+        ("Updated Robot", "Utility"),
+    ]
 
-    if champion_stats.empty:
-        st.warning("Aucune donnée de champion trouvée.")
-        return
+    # Dictionnaires pour stocker les champions joués et les résultats
+    player_champions = {player: [] for player, role in specified_players}
 
-    # Affichage des statistiques des champions
-    st.dataframe(champion_stats)
+    # Parcourez tous les fichiers JSON
+    for scrim_file in scrim_files:
+        file_path = os.path.join(scrim_path, scrim_file)
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+        
+        # Récupérez les champions joués et les résultats (victoire/défaite)
+        for participant in data["participants"]:
+            player_name = participant["NAME"]
+            if player_name in player_champions:
+                player_champions[player_name].append({
+                    "Champion": participant["SKIN"],
+                    "Win": 1 if participant["WIN"] == "Win" else 0
+                })
+
+    # Comptez les occurrences de chaque champion par joueur et calculez le Win Rate
+    player_champions_stats = {}
+    for player, champions in player_champions.items():
+        if champions:
+            df = pd.DataFrame(champions)
+            # Compter les occurrences et calculer le Win Rate
+            champion_stats = (
+                df.groupby("Champion")
+                .agg(
+                    Games=("Champion", "count"),
+                    Wins=("Win", "sum")
+                )
+                .reset_index()
+            )
+            champion_stats["Win Rate"] = (champion_stats["Wins"] / champion_stats["Games"] * 100).round(1)
+            # Ajouter les URLs des icônes des champions
+            champion_stats["Icon"] = "https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/" + champion_stats["Champion"] + ".png"
+            champion_stats = champion_stats[["Icon", "Games", "Win Rate"]]
+            player_champions_stats[player] = champion_stats
+
+    # Ajuster les largeurs des colonnes pour occuper toute la page
+    col_tab1, col_tab2, col_tab3, col_tab4, col_tab5 = st.columns([1, 1, 1, 1, 1])
+
+    # Parcourez chaque joueur et affichez leurs champions dans les colonnes correspondantes
+    for (player, role), col in zip(specified_players, [col_tab1, col_tab2, col_tab3, col_tab4, col_tab5]):
+        with col:
+            # Afficher le rôle et le nom du joueur
+            st.markdown(f"<h3 style='text-align: center;'>{player}</h3>", unsafe_allow_html=True)
+            
+            # Afficher les champions joués avec leur Win Rate
+            if player in player_champions_stats:
+                champion_data = player_champions_stats[player]
+                # Transformer en HTML pour afficher les images et ajouter le Win Rate
+                champion_data_html = champion_data.to_html(
+                    escape=False,
+                    formatters={
+                        "Icon": lambda x: f'<img src="{x}" style="height: 50px;">',
+                    },
+                    index=False,
+                )
+                st.write(champion_data_html, unsafe_allow_html=True)
+            else:
+                st.write("Aucun champion joué")
+
+
+
+
+
+
+
+
+
 
 
 # Fonction pour collecter les statistiques des champions
