@@ -3,7 +3,6 @@ st.set_page_config(layout="wide")
 import os
 import json
 from PIL import Image
-##----------------------------------
 
 import pandas as pd
 import time as tm
@@ -484,13 +483,13 @@ def create_leaderboard(rank_data_list):
 
 
 # Répertoire contenant les icônes des champions
-champ_icons = 'champ_icons'
-item_icons = 'item_icons'
+champ_icons = 'suivi_scrim/champ_icons'
+item_icons = 'suivi_scrim/item_icons'
 
 # Fonction principale
 def main():
     st.title("Suivi des Performances")
-    menu = ["Suivi Scrim", "Suivi SoloQ", "Stats"]
+    menu = ["Suivi Scrim", "Suivi SoloQ", "Stats", "Winrates"]
     choice = st.sidebar.selectbox("Choisissez une catégorie", menu)
 
     if choice == "Suivi Scrim":
@@ -499,10 +498,13 @@ def main():
         handle_soloq()
     elif choice == "Stats":
         handle_stats()
+    elif choice == "Winrates":
+        handle_winrates()
+
 # Fonction pour gérer la catégorie Scrim
 def handle_scrim():
     st.subheader("Suivi des Scrims")
-    scrim_path = 'json_matchs'
+    scrim_path = 'suivi_scrim/json_matchs'
     
     if not os.path.exists(scrim_path):
         st.warning("Aucun scrim trouvé. Veuillez ajouter des fichiers JSON dans le dossier 'json_matchs/scrims'.")
@@ -588,7 +590,7 @@ def handle_stats():
     st.subheader("Pick History Scrims")
 
     # Chemin vers le dossier contenant les fichiers JSON
-    scrim_path = 'json_matchs'  # Remplacez par le chemin de votre dossier JSON
+    scrim_path = 'suivi_scrim/json_matchs'  # Remplacez par le chemin de votre dossier JSON
 
     # Vérifiez si le dossier existe
     if not os.path.exists(scrim_path):
@@ -668,6 +670,86 @@ def handle_stats():
                 st.write(champion_data_html, unsafe_allow_html=True)
             else:
                 st.write("Aucun champion joué")
+
+
+
+def handle_winrates():
+    st.subheader("Calcul du Winrate Scrim")
+    
+    # Liste des membres de l'équipe
+    team_members = ["MaxouTigrou", "Axo Bad Boy", "hqShadow02", "JMGG Druust", "Updated Robot"]
+    
+    # Chemin vers les fichiers JSON des matchs
+    scrim_path = 'suivi_scrim/json_matchs'
+    
+    # Vérifier si le dossier existe
+    if not os.path.exists(scrim_path):
+        st.warning("Aucun dossier trouvé pour les fichiers JSON.")
+        return
+    
+    # Récupérer tous les fichiers JSON du dossier
+    scrim_files = [f for f in os.listdir(scrim_path) if f.endswith('.json')]
+    
+    if not scrim_files:
+        st.warning("Aucun fichier de match trouvé.")
+        return
+    
+    # Initialiser les compteurs pour l'équipe
+    total_games = 0
+    total_wins = 0
+    
+    # Initialiser les statistiques pour toutes les valeurs possibles de 0 à 6
+    horde_stats = {i: {"Games": 0, "Wins": 0} for i in range(0, 7)}
+    
+    for scrim_file in scrim_files:
+        file_path = os.path.join(scrim_path, scrim_file)
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+        
+        # Vérifier si tous les membres de l'équipe sont présents dans la partie
+        team_horde_kills = 0
+        team_result = []
+        
+        for participant in data["participants"]:
+            if participant["NAME"] in team_members:  # Filtrer uniquement les joueurs spécifiés
+                team_result.append(participant["WIN"] == "Win")
+                team_horde_kills += int(participant["HORDE_KILLS"])  # Ajouter les Horde Kills au total de l'équipe
+        
+        # Si tous les membres de l'équipe sont présents
+        if len(team_result) == len(team_members):
+            total_games += 1
+            if all(team_result):  # Si tous les joueurs de l'équipe ont gagné
+                total_wins += 1
+            
+            # Mettre à jour les statistiques pour cette somme
+            if team_horde_kills in horde_stats:
+                horde_stats[team_horde_kills]["Games"] += 1
+                if all(team_result):  # Si l'équipe entière a gagné
+                    horde_stats[team_horde_kills]["Wins"] += 1
+    
+    # Calculer le winrate par somme de Horde Kills
+    for horde_kills_sum in horde_stats:
+        games = horde_stats[horde_kills_sum]["Games"]
+        wins = horde_stats[horde_kills_sum]["Wins"]
+        horde_stats[horde_kills_sum]["Winrate (%)"] = round((wins / games) * 100, 2) if games > 0 else 0.0
+    
+    # Convertir les statistiques en DataFrame
+    df_horde_winrates = pd.DataFrame.from_dict(horde_stats, orient="index")
+    df_horde_winrates.reset_index(inplace=True)
+    df_horde_winrates.rename(columns={"index": "Grubs", "Games": "Total Games", "Wins": "Total Wins"}, inplace=True)
+    
+    # Calculer le winrate global de l'équipe
+    winrate = round((total_wins / total_games) * 100, 2) if total_games > 0 else 0.0
+    
+    # Afficher les résultats globaux
+    st.metric("Total de parties", total_games)
+    st.metric("Total de victoires", total_wins)
+    st.metric("Winrate (%)", f"{winrate}%")
+    
+    # Afficher le tableau des Winrates par Somme des Horde Kills
+    st.write("### Tableau des Winrates/Grubs")
+    st.dataframe(df_horde_winrates, hide_index=True)
+
 
 
 
