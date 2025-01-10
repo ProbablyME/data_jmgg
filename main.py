@@ -504,7 +504,7 @@ def main():
 # Fonction pour gérer la catégorie Scrim
 def handle_scrim():
     st.subheader("Suivi des Scrims")
-    scrim_path = ' json_matchs'
+    scrim_path = 'json_matchs'
     
     if not os.path.exists(scrim_path):
         st.warning("Aucun scrim trouvé. Veuillez ajouter des fichiers JSON dans le dossier 'json_matchs/scrims'.")
