@@ -483,8 +483,8 @@ def create_leaderboard(rank_data_list):
 
 
 # Répertoire contenant les icônes des champions
-champ_icons = 'suivi_scrim/champ_icons'
-item_icons = 'suivi_scrim/item_icons'
+champ_icons = 'champ_icons'
+item_icons = 'item_icons'
 
 # Fonction principale
 def main():
@@ -504,7 +504,7 @@ def main():
 # Fonction pour gérer la catégorie Scrim
 def handle_scrim():
     st.subheader("Suivi des Scrims")
-    scrim_path = 'suivi_scrim/json_matchs'
+    scrim_path = ' json_matchs'
     
     if not os.path.exists(scrim_path):
         st.warning("Aucun scrim trouvé. Veuillez ajouter des fichiers JSON dans le dossier 'json_matchs/scrims'.")
@@ -590,7 +590,7 @@ def handle_stats():
     st.subheader("Pick History Scrims")
 
     # Chemin vers le dossier contenant les fichiers JSON
-    scrim_path = 'suivi_scrim/json_matchs'  # Remplacez par le chemin de votre dossier JSON
+    scrim_path = 'json_matchs'  # Remplacez par le chemin de votre dossier JSON
 
     # Vérifiez si le dossier existe
     if not os.path.exists(scrim_path):
@@ -680,7 +680,7 @@ def handle_winrates():
     team_members = ["MaxouTigrou", "Axo Bad Boy", "hqShadow02", "JMGG Druust", "Updated Robot"]
     
     # Chemin vers les fichiers JSON des matchs
-    scrim_path = 'suivi_scrim/json_matchs'
+    scrim_path = 'json_matchs'
     
     # Vérifier si le dossier existe
     if not os.path.exists(scrim_path):
