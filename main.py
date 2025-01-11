@@ -483,8 +483,8 @@ def create_leaderboard(rank_data_list):
 
 
 # Répertoire contenant les icônes des champions
-champ_icons = 'champ_icons'
-item_icons = 'item_icons'
+champ_icons = 'suivi_scrim/champ_icons'
+item_icons = 'suivi_scrim/item_icons'
 
 # Fonction principale
 def main():
@@ -504,7 +504,7 @@ def main():
 # Fonction pour gérer la catégorie Scrim
 def handle_scrim():
     st.subheader("Suivi des Scrims")
-    scrim_path = 'json_matchs'
+    scrim_path = 'suivi_scrim/json_matchs'
     
     if not os.path.exists(scrim_path):
         st.warning("Aucun scrim trouvé. Veuillez ajouter des fichiers JSON dans le dossier 'json_matchs/scrims'.")
@@ -536,41 +536,87 @@ def display_soloq_profile():
 def display_match_data(file_path):
     with open(file_path, 'r') as f:
         data = json.load(f)
+    team_members = ["MaxouTigrou", "Axo Bad Boy", "hqShadow02", "JMGG Druust", "Updated Robot"]
+
     
     champions = [participant['SKIN'] for participant in data['participants']]
     kills = [participant['CHAMPIONS_KILLED'] for participant in data['participants']]
+    names = [participant['NAME'] for participant in data['participants']] 
     deaths = [participant['NUM_DEATHS'] for participant in data['participants']]
     assists = [participant['ASSISTS'] for participant in data['participants']]
     items = [[participant[f"ITEM{j}"] for j in range(7)] for participant in data['participants']]
+    vision_score = [participant['VISION_SCORE'] for participant in data['participants']]
+    control_wards = [participant["VISION_WARDS_BOUGHT_IN_GAME"] for participant in data['participants']]
+    
+    patch = data['gameVersion'].split('.')[0] + '.' + data['gameVersion'].split('.')[1]
+    duration_ms = data['gameDuration']
+    game_duration_seconds = duration_ms // 1000
+    minutes = game_duration_seconds // 60
+    seconds = game_duration_seconds % 60
+    
+    team_horde_kills = 0
+    team_dragon_kills = 0
+    team_nashor_kills = 0
+    total_vision_score = 0
+    total_vision_score_enemy = 0
+    golds_ally = 0
+    golds_enemy = 0
+    control_wards_ally = 0
+    control_wards_enemy = 0
+    for participant in data["participants"]:
+        if participant["NAME"] in team_members:  
+            team_horde_kills += int(participant["HORDE_KILLS"])  
+            team_dragon_kills += int(participant["DRAGON_KILLS"]) 
+            team_nashor_kills += int(participant["BARON_KILLS"])
+            total_vision_score += int(participant["VISION_SCORE"])
+            golds_ally += int(participant["GOLD_EARNED"])
+            control_wards_ally += int(participant["VISION_WARDS_BOUGHT_IN_GAME"])
+        else : 
+            total_vision_score_enemy += int(participant["VISION_SCORE"])
+            golds_enemy += int(participant["GOLD_EARNED"])
+            control_wards_enemy += int(participant["VISION_WARDS_BOUGHT_IN_GAME"])
+
 
     # Display Head-to-Head Layout
-    st.write("**Team Head-to-Head**")
+    st.write(f"Duration : {minutes}:{seconds}")
+    st.write(f" Patch : {patch}")
+    st.write(f"Gold Diff : {golds_ally - golds_enemy}")
     for i in range(5):  # Assuming 5 players per team
         row = st.columns([3, 1, 3])  # Column layout for head-to-head
         with row[0]:  # Team 1 Player
-            display_champion_row(champions[i], kills[i], deaths[i], assists[i], items[i])
+            display_champion_row(champions[i], names[i], kills[i], deaths[i], assists[i], items[i], vision_score[i], control_wards[i])
         with row[1]:  # VS Separator
             st.markdown("<h4 style='text-align: center;'>VS</h4>", unsafe_allow_html=True)
         with row[2]:  # Team 2 Player
-            display_champion_row(champions[i + 5], kills[i + 5], deaths[i + 5], assists[i + 5], items[i + 5])
+            display_champion_row(champions[i + 5],names[i+5], kills[i + 5], deaths[i + 5], assists[i + 5], items[i + 5], vision_score[i+5], control_wards[i+5])
 
         # Add a horizontal line after each row
         st.markdown("<hr>", unsafe_allow_html=True)
     
+    st.write(f"Grubs Killed : {team_horde_kills}")
+    st.write(f"Dragons Killed : {team_dragon_kills}")
+    st.write(f"Nashors Killed : {team_nashor_kills}")
+    st.write(f"total vision score :{total_vision_score}             total vision score enemy : {total_vision_score_enemy}")
+    st.write(f"Pinks allied : {control_wards_ally}")
+    st.write(f"Pinks enemy : {control_wards_enemy}")
+
     # Bouton pour retourner au menu de base
     if st.button("Retour au menu"):
         st.experimental_rerun()
 
 
-def display_champion_row(champion, kills, deaths, assists, items):
+def display_champion_row(champion, names, kills, deaths, assists, items, vision_score, control_wards):
     """Helper function to display champion, items, and stats in a row."""
-    st.image(os.path.join(champ_icons, f"{champion}.png"), width=50, caption=champion)
+    st.image(os.path.join(champ_icons, f"{champion}.png"), width=50, caption=names)
     item_cols = st.columns(len(items))  # Create smaller columns for items
     for idx, item_id in enumerate(items):
         with item_cols[idx]:
             display_item_icon(item_id, inline=True)
     # Add K/D/A stats
     st.write(f"{kills}/{deaths}/{assists}")
+    st.write(f"Vision Score : {vision_score}")
+    st.write(f"Pinks bought : {control_wards}")
+
 
 def display_item_icon(item_id, inline=False):
     """Displays item icon with smaller size."""
@@ -585,12 +631,13 @@ def display_item_icon(item_id, inline=False):
 
 
 
+
 #suivi_scrim/json_matchs
 def handle_stats():
     st.subheader("Pick History Scrims")
 
     # Chemin vers le dossier contenant les fichiers JSON
-    scrim_path = 'json_matchs'  # Remplacez par le chemin de votre dossier JSON
+    scrim_path = 'suivi_scrim/json_matchs'  # Remplacez par le chemin de votre dossier JSON
 
     # Vérifiez si le dossier existe
     if not os.path.exists(scrim_path):
@@ -680,7 +727,7 @@ def handle_winrates():
     team_members = ["MaxouTigrou", "Axo Bad Boy", "hqShadow02", "JMGG Druust", "Updated Robot"]
     
     # Chemin vers les fichiers JSON des matchs
-    scrim_path = 'json_matchs'
+    scrim_path = 'suivi_scrim/json_matchs'
     
     # Vérifier si le dossier existe
     if not os.path.exists(scrim_path):
