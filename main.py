@@ -502,14 +502,20 @@ def main():
         handle_winrates()
 
 # Fonction pour gérer la catégorie Scrim
+import streamlit as st
+import pandas as pd
+import json
+import os
+import plotly.graph_objects as go  # Pour le graphique
+
 def handle_scrim():
     st.subheader("Suivi des Scrims")
     scrim_path = 'json_matchs'
-    
+
     if not os.path.exists(scrim_path):
-        st.warning("Aucun scrim trouvé. Veuillez ajouter des fichiers JSON dans le dossier 'json_matchs/scrims'.")
+        st.warning("Aucun scrim trouvé. Veuillez ajouter des fichiers JSON dans le dossier 'json_matchs'.")
         return
-    
+
     scrim_files = [f for f in os.listdir(scrim_path) if f.endswith('.json')]
     if not scrim_files:
         st.warning("Aucun fichier de scrim disponible.")
@@ -517,7 +523,230 @@ def handle_scrim():
 
     for scrim_file in scrim_files:
         if st.button(f"Afficher le Scrim : {scrim_file}"):
-            display_match_data(os.path.join(scrim_path, scrim_file))
+            with open(os.path.join(scrim_path, scrim_file), 'r') as f:
+                data = json.load(f)
+        
+            # ---------------------------------------
+            # Infos générales : patch, durée
+            # ---------------------------------------
+            patch = data['gameVersion'].split('.')[0] + '.' + data['gameVersion'].split('.')[1]
+            
+            game_duration_ms = data["gameDuration"]
+            game_duration_seconds = game_duration_ms // 1000
+            minutes = game_duration_seconds // 60
+            seconds = game_duration_seconds % 60
+
+            st.write(f"**Patch** : {patch}")
+            st.write(f"**Durée** : {minutes}:{seconds:02d}")
+
+            # ---------------------------------------
+            # Extraction des données par participant
+            # ---------------------------------------
+            participants_data = []
+            for participant in data['participants']:
+                pseudo   = participant.get('NAME', '')
+                champion = participant.get('SKIN', '')
+                kills    = int(participant.get('CHAMPIONS_KILLED', 0))
+                deaths   = int(participant.get('NUM_DEATHS', 0))
+                assists  = int(participant.get('ASSISTS', 0))
+                cs       = participant.get('Missions_CreepScore', '0')
+                items    = [participant.get(f"ITEM{i}", "") for i in range(7)]
+
+                gold_earned   = int(participant.get("GOLD_EARNED", 0))
+                damage_dealt  = int(participant.get("TOTAL_DAMAGE_DEALT_TO_CHAMPIONS", 0))
+                turret_kills  = int(participant.get("TURRET_TAKEDOWNS", 0))
+                drakes        = int(participant.get("DRAGON_KILLS", 0))
+                heralds       = int(participant.get("RIFT_HERALD_KILLS", 0))
+                barons        = int(participant.get("BARON_KILLS", 0))
+                grubs         = int(participant.get("HORDE_KILLS", 0))
+                vision_score  = int(participant.get("VISION_SCORE", 0))
+                win_str       = participant.get("WIN", "Fail")   # "Win" ou "Fail"
+
+                participants_data.append({
+                    "Joueur": pseudo,
+                    "Champion": f'<img src="https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/{champion}.png" style="height: 50px;">',
+                    "K": kills,
+                    "D": deaths,
+                    "A": assists,
+                    "K/D/A": f"{kills}/{deaths}/{assists}",
+                    "CS": cs,
+                    "Items": " ".join(
+                        f'<img src="https://ddragon.leagueoflegends.com/cdn/14.5.1/img/item/{item}.png" style="height: 30px;">'
+                        for item in items if item
+                    ),
+                    "Team": participant.get("TEAM", ""),            # "100" (Blue) ou "200" (Red)
+                    "Role": participant.get("TEAM_POSITION", ""),   # TOP/JUNGLE/MIDDLE/BOTTOM/UTILITY
+                    "Gold": gold_earned,
+                    "Damage": damage_dealt,
+                    "TurretKills": turret_kills,
+                    "Drakes": drakes,
+                    "Heralds": heralds,
+                    "Barons": barons,
+                    "Grubs": grubs,
+                    "VisionScore": vision_score,
+                    "WinStr": win_str
+                })
+
+            df = pd.DataFrame(participants_data)
+
+            # ---------------------------------------
+            # Séparer data Blue / Red
+            # ---------------------------------------
+            blue_side = df[df["Team"] == "100"]
+            red_side  = df[df["Team"] == "200"]
+
+            # ---------------------------------------
+            # DataFrames stats globales
+            # ---------------------------------------
+            def build_team_stats(team_df):
+                """
+                Calcule un résumé global (tour, drakes, gold, etc.) pour l'équipe.
+                """
+                turrets = team_df["TurretKills"].sum()
+                grubs   = team_df["Grubs"].sum()
+                drakes  = team_df["Drakes"].sum()
+                heralds = team_df["Heralds"].sum()
+                barons  = team_df["Barons"].sum()
+
+                total_gold   = team_df["Gold"].sum()
+                total_vision = team_df["VisionScore"].sum()
+
+                total_kills  = team_df["K"].sum()
+                total_deaths = team_df["D"].sum()
+                if total_deaths == 0:
+                    kd_str = f"{total_kills}/0"
+                else:
+                    kd_str = f"{total_kills}/{total_deaths}"
+
+                # Victoire / Défaite
+                team_win = team_df["WinStr"].unique()  # ex: array(["Win"]) ou array(["Fail"])
+                if "Win" in team_win:
+                    result = "Win"
+                else:
+                    result = "Fail"
+
+                return pd.DataFrame([{
+                    "Tourelles prises": turrets,
+                    "Grubs": grubs,
+                    "Drakes": drakes,
+                    "Heralds": heralds,
+                    "Nashors": barons,
+                    "Gold total": total_gold,
+                    "Victoire ?": result,
+                    "Vision score cumulé": total_vision,
+                    "K/D total": kd_str
+                }])
+
+            # Construction
+            df_blue_stats = build_team_stats(blue_side)
+            df_red_stats  = build_team_stats(red_side)
+
+            # Affichage côte à côte
+            st.markdown("### Statistiques globales par équipe")
+            col_team1, col_team2 = st.columns(2)
+            with col_team1:
+                st.markdown("**Blue Side**")
+                st.dataframe(df_blue_stats, hide_index=True)
+
+            with col_team2:
+                st.markdown("**Red Side**")
+                st.dataframe(df_red_stats, hide_index=True)
+
+
+
+            # ---------------------------------------
+            # Détails par joueur 
+            # ---------------------------------------
+            st.markdown("### Détails par joueur")
+
+            # Selon vos JSON, vérifiez si la 1ère moitié = Blue side, 2nde = Red side
+            # Sinon, fiez-vous plutôt à la colonne Team == "100" / "200"
+            df_team1 = df.iloc[:5]
+            df_team2 = df.iloc[5:]
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("#### Blue Side  ")
+                st.write(
+                    df_team1.drop(columns=[
+                        "Team","Role","Gold","Damage","TurretKills","Drakes",
+                        "Heralds","Barons","Grubs","VisionScore","WinStr"
+                    ]).to_html(escape=False, index=False),
+                    unsafe_allow_html=True
+                )
+
+            with col2:
+                st.markdown("#### Red Side ")
+                st.write(
+                    df_team2.drop(columns=[
+                        "Team","Role","Gold","Damage","TurretKills","Drakes",
+                        "Heralds","Barons","Grubs","VisionScore","WinStr"
+                    ]).to_html(escape=False, index=False),
+                    unsafe_allow_html=True
+                )
+                
+            # ---------------------------------------
+            # Répartition des golds par rôle
+            # ---------------------------------------
+            st.markdown("### Répartition des golds par rôle")
+
+            def compute_gold_distribution(team_df):
+                """
+                Retourne un DataFrame avec la somme de gold par rôle, et % par rapport au total.
+                """
+                roles_order = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"]
+                total_gold  = team_df["Gold"].sum()
+                distribution = []
+
+                for role in roles_order:
+                    role_gold = team_df.loc[team_df["Role"] == role, "Gold"].sum()
+                    pct = (role_gold / total_gold * 100) if total_gold > 0 else 0
+                    distribution.append({
+                        "Rôle": role,
+                        "Gold": role_gold,
+                        "Pourcentage (%)": f"{pct:.2f}"
+                    })
+                return pd.DataFrame(distribution)
+
+            df_blue_gold = compute_gold_distribution(blue_side)
+            df_red_gold  = compute_gold_distribution(red_side)
+
+            col_gold_1, col_gold_2 = st.columns(2)
+            with col_gold_1:
+                st.markdown("**Blue Side**")
+                st.dataframe(df_blue_gold)
+
+            with col_gold_2:
+                st.markdown("**Red Side**")
+                st.dataframe(df_red_gold)
+
+            # ---------------------------------------
+            # Graphique : Degats par role 
+            # ---------------------------------------
+            st.markdown("### Comparaison des dégâts par rôle (Blue vs Red)")
+            roles_order = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"]
+
+            blue_damage = [blue_side.loc[blue_side["Role"] == r, "Damage"].sum() for r in roles_order]
+            red_damage  = [red_side.loc[red_side["Role"] == r, "Damage"].sum()  for r in roles_order]
+
+            fig = go.Figure(data=[
+                go.Bar(name='Blue side', x=roles_order, y=blue_damage, marker_color='blue'),
+                go.Bar(name='Red side',  x=roles_order, y=red_damage,  marker_color='red')
+            ])
+            fig.update_layout(
+                barmode='group',
+                title='Dégâts infligés par rôle (Blue vs Red)',
+                xaxis_title='Rôle',
+                yaxis_title='Dégâts totaux'
+            )
+            st.plotly_chart(fig)
+
+            # ---------------------------------------
+            # Bouton retour
+            # ---------------------------------------
+            if st.button("Retour au menu"):
+                st.experimental_rerun()
+
 
 # Fonction pour gérer la catégorie SoloQ
 def handle_soloq():
@@ -530,93 +759,6 @@ def display_soloq_profile():
     df1 = generer_leaderboard()
     
     st.dataframe(df1)
-    
-    
-    
-def display_match_data(file_path):
-    with open(file_path, 'r') as f:
-        data = json.load(f)
-    team_members = ["MaxouTigrou", "Axo Bad Boy", "hqShadow02", "JMGG Druust", "Updated Robot"]
-
-    
-    champions = [participant['SKIN'] for participant in data['participants']]
-    kills = [participant['CHAMPIONS_KILLED'] for participant in data['participants']]
-    names = [participant['NAME'] for participant in data['participants']] 
-    deaths = [participant['NUM_DEATHS'] for participant in data['participants']]
-    assists = [participant['ASSISTS'] for participant in data['participants']]
-    items = [[participant[f"ITEM{j}"] for j in range(7)] for participant in data['participants']]
-    vision_score = [participant['VISION_SCORE'] for participant in data['participants']]
-    control_wards = [participant["VISION_WARDS_BOUGHT_IN_GAME"] for participant in data['participants']]
-    
-    patch = data['gameVersion'].split('.')[0] + '.' + data['gameVersion'].split('.')[1]
-    duration_ms = data['gameDuration']
-    game_duration_seconds = duration_ms // 1000
-    minutes = game_duration_seconds // 60
-    seconds = game_duration_seconds % 60
-    
-    team_horde_kills = 0
-    team_dragon_kills = 0
-    team_nashor_kills = 0
-    total_vision_score = 0
-    total_vision_score_enemy = 0
-    golds_ally = 0
-    golds_enemy = 0
-    control_wards_ally = 0
-    control_wards_enemy = 0
-    for participant in data["participants"]:
-        if participant["NAME"] in team_members:  
-            team_horde_kills += int(participant["HORDE_KILLS"])  
-            team_dragon_kills += int(participant["DRAGON_KILLS"]) 
-            team_nashor_kills += int(participant["BARON_KILLS"])
-            total_vision_score += int(participant["VISION_SCORE"])
-            golds_ally += int(participant["GOLD_EARNED"])
-            control_wards_ally += int(participant["VISION_WARDS_BOUGHT_IN_GAME"])
-        else : 
-            total_vision_score_enemy += int(participant["VISION_SCORE"])
-            golds_enemy += int(participant["GOLD_EARNED"])
-            control_wards_enemy += int(participant["VISION_WARDS_BOUGHT_IN_GAME"])
-
-
-    # Display Head-to-Head Layout
-    st.write(f"Duration : {minutes}:{seconds}")
-    st.write(f" Patch : {patch}")
-    st.write(f"Gold Diff : {golds_ally - golds_enemy}")
-    for i in range(5):  # Assuming 5 players per team
-        row = st.columns([3, 1, 3])  # Column layout for head-to-head
-        with row[0]:  # Team 1 Player
-            display_champion_row(champions[i], names[i], kills[i], deaths[i], assists[i], items[i], vision_score[i], control_wards[i])
-        with row[1]:  # VS Separator
-            st.markdown("<h4 style='text-align: center;'>VS</h4>", unsafe_allow_html=True)
-        with row[2]:  # Team 2 Player
-            display_champion_row(champions[i + 5],names[i+5], kills[i + 5], deaths[i + 5], assists[i + 5], items[i + 5], vision_score[i+5], control_wards[i+5])
-
-        # Add a horizontal line after each row
-        st.markdown("<hr>", unsafe_allow_html=True)
-    
-    st.write(f"Grubs Killed : {team_horde_kills}")
-    st.write(f"Dragons Killed : {team_dragon_kills}")
-    st.write(f"Nashors Killed : {team_nashor_kills}")
-    st.write(f"total vision score :{total_vision_score}             total vision score enemy : {total_vision_score_enemy}")
-    st.write(f"Pinks allied : {control_wards_ally}")
-    st.write(f"Pinks enemy : {control_wards_enemy}")
-
-    # Bouton pour retourner au menu de base
-    if st.button("Retour au menu"):
-        st.experimental_rerun()
-
-
-def display_champion_row(champion, names, kills, deaths, assists, items, vision_score, control_wards):
-    """Helper function to display champion, items, and stats in a row."""
-    st.image(os.path.join(champ_icons, f"{champion}.png"), width=50, caption=names)
-    item_cols = st.columns(len(items))  # Create smaller columns for items
-    for idx, item_id in enumerate(items):
-        with item_cols[idx]:
-            display_item_icon(item_id, inline=True)
-    # Add K/D/A stats
-    st.write(f"{kills}/{deaths}/{assists}")
-    st.write(f"Vision Score : {vision_score}")
-    st.write(f"Pinks bought : {control_wards}")
-
 
 def display_item_icon(item_id, inline=False):
     """Displays item icon with smaller size."""
@@ -627,12 +769,7 @@ def display_item_icon(item_id, inline=False):
         st.write("?")
 
 
-
-
-
-
-
-#/json_matchs
+#suivi_scrim/json_matchs
 def handle_stats():
     st.subheader("Pick History Scrims")
 
